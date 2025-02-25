@@ -78,7 +78,7 @@ def make_dot(var, params=None):
             name = param_map[id(var)] if id(var) in param_map else ''
         return f"{name}\n{size_to_str(var.size())}"
 
-    def add_nodes(fn, skip=False):
+    def add_nodes(fn, hide_no_ops=True):
         print(f"add_node {id(fn)} {fn}")
         assert not torch.is_tensor(fn)
         if fn in seen:
@@ -97,34 +97,28 @@ def make_dot(var, params=None):
         if id(fn) in grad_fn_metadata:
             meta = grad_fn_metadata[id(fn)]
             dot.node(str(id(fn)), get_fn_name(fn), fillcolor=meta.color)
-            # if we created a no_op to create our label, we can safely skip
-            # next_function[0] which will be our no_op
-            if False and meta.no_op:
-                print("FOUND A NO OP ")
-                # skip = True
-                u = fn.next_functions[0]
-                if u[0] is not None:
-                    # dot.edge(str(id(u[0])), str(id(fn)))
-                    fn = u[0]
-                print(fn)
-                # fn = fn.next_functions[0]
-                print(fn)
-            else:
-                if hasattr(fn, 'next_functions'):
-                    for u in fn.next_functions:
-                        if u[0] is not None:
-                            dot.edge(str(id(u[0])), str(id(fn)))
-                            add_nodes(u[0], skip)
+            if hide_no_ops and meta.no_op:
+                # no_ops are created when we add a label_val() to a tensor that
+                # has no grad_fn, so we introduce a no_op grad_fn so the label
+                # appears in the computation graph
+
+                # skip over the no_op and draw edges to the no_op's next_function
+                next_fn = fn.next_functions[0][0]
+                for v in next_fn.next_functions:
+                    if v[0] is not None:
+                        dot.edge(str(id(v[0])), str(id(fn)))
+                        add_nodes(v[0])
+                return
 
         else: 
             dot.node(str(id(fn)), get_fn_name(fn))
 
         # recurse
-            if hasattr(fn, 'next_functions'):
-                for u in fn.next_functions:
-                    if u[0] is not None:
-                        dot.edge(str(id(u[0])), str(id(fn)))
-                        add_nodes(u[0], skip)
+        if hasattr(fn, 'next_functions'):
+            for u in fn.next_functions:
+                if u[0] is not None:
+                    dot.edge(str(id(u[0])), str(id(fn)))
+                    add_nodes(u[0])
 
     def add_base_tensor(var, color='darkolivegreen1'):
         if var in seen:

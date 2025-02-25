@@ -1,7 +1,7 @@
 import unittest
 import torch
 from torch import nn
-from torchviz import make_dot, make_dot_from_trace
+from torchviz import make_dot
 
 
 def make_mlp_and_input():

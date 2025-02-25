@@ -2,27 +2,33 @@ from graphviz import Digraph
 import torch
 from torch.autograd import Variable
 
+from .wrapper import grad_fn_metadata, Metadata
+
 # Saved attrs for grad_fn (incl. saved variables) begin with `._saved_*`
 SAVED_PREFIX = "_saved_"
 
-def get_fn_name(fn, show_attrs, max_attr_chars=50):
+def get_fn_name(fn, max_attr_chars=50):
     name = str(type(fn).__name__)
-    if not show_attrs:
+    if id(fn) not in grad_fn_metadata:
         return name
-    attrs = dict()
-    for attr in dir(fn):
-        if not attr.startswith(SAVED_PREFIX):
-            continue
-        val = getattr(fn, attr)
-        attr = attr[len(SAVED_PREFIX):]
-        if torch.is_tensor(val):
-            attrs[attr] = "[saved tensor]"
-        elif isinstance(val, tuple) and any(torch.is_tensor(t) for t in val):
-            attrs[attr] = "[saved tensors]"
-        else:
-            attrs[attr] = str(val)
-    if not attrs:
-        return name
+
+    # add a bunch of metadata
+    meta = grad_fn_metadata[id(fn)]
+    name = meta.label
+
+    if meta.is_arg:
+        attrs = {
+            "Arg": tuple(meta.shape),
+        }
+    elif meta.is_ret:
+        attrs = {
+            "Ret": tuple(meta.shape),
+        }
+    else:
+        attrs = {
+            "shape": tuple(meta.shape),
+        }
+
     max_attr_chars = max(max_attr_chars, 3)
     col1width = max(len(k) for k in attrs.keys())
     col2width = min(max(len(str(v)) for v in attrs.values()), max_attr_chars)
@@ -44,6 +50,9 @@ def make_dot(var, params=None):
      - Dark green: if any output is a view, we represent its base tensor with
          a dark green node.
     """
+    global grad_fn_metadata
+    print("IN MAKE DOT")
+    print(grad_fn_metadata)
 
     if params is not None:
         assert all(isinstance(p, Variable) for p in params.values())
@@ -69,7 +78,8 @@ def make_dot(var, params=None):
             name = param_map[id(var)] if id(var) in param_map else ''
         return f"{name}\n{size_to_str(var.size())}"
 
-    def add_nodes(fn):
+    def add_nodes(fn, skip=False):
+        print(f"add_node {id(fn)} {fn}")
         assert not torch.is_tensor(fn)
         if fn in seen:
             return
@@ -83,15 +93,39 @@ def make_dot(var, params=None):
             dot.edge(str(id(var)), str(id(fn)))
 
         # add the node for this grad_fn
-        dot.node(str(id(fn)), get_fn_name(fn, show_attrs=False))
+        # if not skip:
+        if id(fn) in grad_fn_metadata:
+            meta = grad_fn_metadata[id(fn)]
+            dot.node(str(id(fn)), get_fn_name(fn), fillcolor=meta.color)
+            # if we created a no_op to create our label, we can safely skip
+            # next_function[0] which will be our no_op
+            if False and meta.no_op:
+                print("FOUND A NO OP ")
+                # skip = True
+                u = fn.next_functions[0]
+                if u[0] is not None:
+                    # dot.edge(str(id(u[0])), str(id(fn)))
+                    fn = u[0]
+                print(fn)
+                # fn = fn.next_functions[0]
+                print(fn)
+            else:
+                if hasattr(fn, 'next_functions'):
+                    for u in fn.next_functions:
+                        if u[0] is not None:
+                            dot.edge(str(id(u[0])), str(id(fn)))
+                            add_nodes(u[0], skip)
+
+        else: 
+            dot.node(str(id(fn)), get_fn_name(fn))
 
         # recurse
-        if hasattr(fn, 'next_functions'):
-            for u in fn.next_functions:
-                if u[0] is not None:
-                    dot.edge(str(id(u[0])), str(id(fn)))
-                    add_nodes(u[0])
-        
+            if hasattr(fn, 'next_functions'):
+                for u in fn.next_functions:
+                    if u[0] is not None:
+                        dot.edge(str(id(u[0])), str(id(fn)))
+                        add_nodes(u[0], skip)
+
     def add_base_tensor(var, color='darkolivegreen1'):
         if var in seen:
             return
@@ -104,7 +138,6 @@ def make_dot(var, params=None):
             add_base_tensor(var._base, color='darkolivegreen3')
             dot.edge(str(id(var._base)), str(id(var)), style="dotted")
 
-
     # handle multiple outputs
     if isinstance(var, tuple):
         for v in var:
@@ -113,6 +146,9 @@ def make_dot(var, params=None):
         add_base_tensor(var)
 
     resize_graph(dot)
+
+    # cleanup
+    grad_fn_metadata = {}
 
     return dot
 

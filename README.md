@@ -48,7 +48,7 @@ make_dot(y.mean(), params=dict(model.named_parameters()))
 ![image](https://user-images.githubusercontent.com/13428986/110844921-ff3f7500-8277-11eb-912e-3ba03623fdf5.png)
 
 ### Labeling a tensor
-Example usage of labelling a tensor with `label_var(tensor, "label")`.
+Example usage of labeling a tensor with `label_var(tensor, "label")`.
 
 See `test/test_labels.py::test_label_var`.
 
@@ -71,7 +71,7 @@ dot.view()
 
 
 ### Labeling an arg
-Example of labelling an arg.
+Example of labeling an arg.
 
 See `test/test_labels.py::test_label_args`.
 
@@ -96,7 +96,7 @@ dot.view()
 ![labelled](test/test_label_args.png)
 
 ### Labeling a return value
-Example of labelling an return value. When both the args and return values are
+Example of labeling an return value. When both the args and return values are
 labelled, a subgraph for that function will automatically be created.
 
 See `test/test_labels.py::test_label_args_rets`.
@@ -123,9 +123,9 @@ dot.view()
 
 
 ### Labeling a function
-Example of labelling a function. When the function takes in tensor args and kwargs
+Example of labeling a function. When the function takes in tensor args and kwargs
 and returns a tensor or tuple of tensors, we can use a decorator `label_fn` to
-do the labelling for us. It will call `label_arg` and `label_ret` under the 
+do the labeling for us. It will call `label_arg` and `label_ret` under the 
 hood and track which function it belongs to (as well as how many times the 
 function was called), so we get a separate groups for calls to the same function.
 All you have to do is label the return values `label_fn("ret 1", "ret 2",...)`.

@@ -13,7 +13,3 @@ clean:
 .PHONY: test
 test:
 	PYTHONPATH=. python test/test.py
-
-.PHONY: test_decorator
-test_decorator:
-	PYTHONPATH=. python test/test_decorator.py

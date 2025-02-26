@@ -3,26 +3,26 @@ import torch
 from copy import copy
 from torch.autograd import Variable
 
-from .wrapper import grad_fn_metadata, Metadata
+from .metadata import grad_fn_metadata
 
 def get_fn_name(fn, max_attr_chars=50):
     name = str(type(fn).__name__)
     if id(fn) not in grad_fn_metadata:
         return name
 
-    # add a bunch of metadata
+    # extract info from metadata into the node
     meta = grad_fn_metadata[id(fn)]
     name = meta.label
 
     if meta.is_arg:
         attrs = {
             "Arg": tuple(meta.shape),
-            "fn": meta.caller_fn,
+            "caller": meta.caller_fn,
         }
     elif meta.is_ret:
         attrs = {
             "Ret": tuple(meta.shape),
-            "fn": meta.caller_fn,
+            "caller": meta.caller_fn,
         }
     else:
         attrs = {
@@ -81,11 +81,6 @@ def make_dot(var, params=None, hide_no_ops=True):
     def add_node_to_subgraphs(str_id, text, fillcolor='lightgray', subgraphs=[]):
         for sub in subgraphs:
             sub.node(str_id, text, fillcolor=fillcolor)
-        
-        # this causes infinite loop. now we update subgraphs at end
-        # for i in range(len(subgraphs) - 1):
-        #     subgraphs[i].subgraph(subgraphs[i+1])
-
 
     def add_nodes(fn, subgraphs=[dot]):
         assert not torch.is_tensor(fn)
@@ -108,7 +103,15 @@ def make_dot(var, params=None, hide_no_ops=True):
             if meta.is_ret:
                 if meta.group not in groups:
                     graph = Digraph(name=f"cluster_{meta.group}")
-                    graph.attr(label=meta.group, style="dashed", color="blue")
+                    graph.attr(
+                        label=meta.group, 
+                        style="dashed", 
+                        color="blue", 
+                        fontname="monospace",
+                        fontsize='12',
+                        ranksep='0.1',
+                        height='0.2',
+                    )
                     groups[meta.group] = graph
 
                 graph = groups[meta.group]
@@ -121,8 +124,12 @@ def make_dot(var, params=None, hide_no_ops=True):
 
                 subgraphs.append(graph)
 
-            # dot.node(str(id(fn)), get_fn_name(fn), fillcolor=meta.color)
-            add_node_to_subgraphs(str(id(fn)), get_fn_name(fn), fillcolor=meta.color, subgraphs=subgraphs)
+            add_node_to_subgraphs(
+                str(id(fn)), 
+                get_fn_name(fn), 
+                fillcolor=meta.color, 
+                subgraphs=subgraphs
+            )
 
             if meta.is_arg:
                 if len(subgraphs) > 1:
@@ -144,7 +151,6 @@ def make_dot(var, params=None, hide_no_ops=True):
                 return
 
         else: 
-            # dot.node(str(id(fn)), get_fn_name(fn))
             add_node_to_subgraphs(str(id(fn)), get_fn_name(fn), subgraphs=subgraphs)
 
         # recurse
@@ -183,7 +189,7 @@ def make_dot(var, params=None, hide_no_ops=True):
     resize_graph(dot)
 
     # cleanup
-    grad_fn_metadata = {}
+    grad_fn_metadata.clear()
 
     return dot
 

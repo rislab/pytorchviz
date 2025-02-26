@@ -85,6 +85,29 @@ def test_nested():
     dot = tv.make_dot(loss, params={"A": A, "B": B})
     dot.render('test/test_nested', format='png', view=True, cleanup=True)
 
+def test_nested_label_fn():
+    """
+    label_fn will also work with nested function calls 
+    """
+
+    @tv.label_fn("Z")
+    def bar(X, Y):
+        Z = X * Y
+        return Z
+
+    @tv.label_fn("C")
+    def foo(A, B):
+        C = bar(A,B) @ bar(A,B)
+        return C
+
+    A = torch.randn(3, 3, requires_grad=True)
+    B = torch.randn(3, 3, requires_grad=True)
+    C = foo(A, B)
+    loss = C.sum()
+
+    dot = tv.make_dot(loss, params={"A": A, "B": B})
+    dot.render('test/test_nested_label_fn', format='png', view=True, cleanup=True)
+
 def test_label_fn():
     """
     we can use tv.label_fn to automatically label_arg and label_ret as long as
@@ -117,4 +140,5 @@ if __name__ == "__main__":
     test_label_args()
     test_label_args_rets()
     test_nested()
+    test_nested_label_fn()
     test_label_fn()

@@ -5,6 +5,8 @@ from typing import Dict
 import itertools
 import functools
 
+ENABLE_LABELS = True
+
 @dataclass
 class Metadata():
     label: str
@@ -18,8 +20,6 @@ class Metadata():
     color: str = None
 
 grad_fn_metadata: Dict[str, Metadata] = {}
-
-ENABLE_LABELS = True
 
 class CustomOp(torch.autograd.Function):
     @staticmethod

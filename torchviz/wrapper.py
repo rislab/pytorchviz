@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 grad_fn_metadata = {}
 
-ENABLE_LABELS = True
+ENABLE_LABELS = 1
 
 @dataclass
 class Metadata():
@@ -31,12 +31,12 @@ class CustomOp(torch.autograd.Function):
         return grad_output, None  # Preserve the chain
 
 def label_arg(tensor, label, group=None):
-    return label_val(tensor, label, group=group, caller_frame=2, is_arg=True, color="blanchedalmond")
+    return label_var(tensor, label, group=group, caller_frame=2, is_arg=True, color="blanchedalmond")
 
 def label_ret(tensor, label, group=None):
-    return label_val(tensor, label, group=group, caller_frame=2, is_ret=True, color="salmon")
+    return label_var(tensor, label, group=group, caller_frame=2, is_ret=True, color="salmon")
 
-def label_val(tensor, label, group=None, caller_frame=1, is_arg=False, is_ret=False, color="orange"):
+def label_var(tensor, label, group=None, caller_frame=1, is_arg=False, is_ret=False, color="orange"):
     if not ENABLE_LABELS:
         return tensor
 
@@ -180,33 +180,4 @@ def attach_grad_fn_metadata(tensor, custom_name):
         print(f"Tracking {custom_name} with key {id(tensor.grad_fn)}")
         grad_fn_metadata[id(tensor.grad_fn)] = custom_name
     return tensor
-
-###############################################################################
-
-class CustomGradName(ContextDecorator):
-    def __init__(self, name):
-        self.name = name
-
-    def __enter__(self):
-        # Store the current context name globally
-        global current_custom_name
-        self.prev_name = current_custom_name
-        current_custom_name = self.name
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        # Restore previous name
-        global current_custom_name
-        current_custom_name = self.prev_name
-
-# Initialize a global variable to store context name
-current_custom_name = None
-
-# Wrapper function to track grad_fn automatically
-def track_grad_fn(tensor):
-    if tensor.grad_fn is not None and current_custom_name:
-        grad_fn_id = id(tensor.grad_fn)
-        grad_fn_metadata[grad_fn_id] = current_custom_name
-        print(f"Tracking {current_custom_name}: grad_fn ID = {grad_fn_id}")
-    return tensor
-
 

@@ -5,9 +5,6 @@ from torch.autograd import Variable
 
 from .wrapper import grad_fn_metadata, Metadata
 
-# Saved attrs for grad_fn (incl. saved variables) begin with `._saved_*`
-SAVED_PREFIX = "_saved_"
-
 def get_fn_name(fn, max_attr_chars=50):
     name = str(type(fn).__name__)
     if id(fn) not in grad_fn_metadata:
@@ -20,10 +17,12 @@ def get_fn_name(fn, max_attr_chars=50):
     if meta.is_arg:
         attrs = {
             "Arg": tuple(meta.shape),
+            "fn": meta.caller_fn,
         }
     elif meta.is_ret:
         attrs = {
             "Ret": tuple(meta.shape),
+            "fn": meta.caller_fn,
         }
     else:
         attrs = {
@@ -67,10 +66,9 @@ def make_dot(var, params=None, hide_no_ops=True):
                      height='0.2',
                      fontname='monospace')
     dot = Digraph(node_attr=node_attr, graph_attr=dict(size="12,12"))
-    print("ID DOT")
-    print(id(dot))
     seen = set()
-    all_subgraphs = {}
+    groups = {} # mapping from group names to Digraphs
+    children = {} # mapping from a digraph to its Digraph children
 
     def size_to_str(size):
         return "(" + (", ").join([str(v) for v in size]) + ")"
@@ -81,13 +79,12 @@ def make_dot(var, params=None, hide_no_ops=True):
         return f"{name}\n{size_to_str(var.size())}"
 
     def add_node_to_subgraphs(str_id, text, fillcolor='lightgray', subgraphs=[]):
-        print("iterating over subgraphs")
         for sub in subgraphs:
-            print(f"adding node to {id(sub)}")
             sub.node(str_id, text, fillcolor=fillcolor)
         
-        for i in range(len(subgraphs) - 1):
-            subgraphs[i].subgraph(subgraphs[i+1])
+        # this causes infinite loop. now we update subgraphs at end
+        # for i in range(len(subgraphs) - 1):
+        #     subgraphs[i].subgraph(subgraphs[i+1])
 
 
     def add_nodes(fn, subgraphs=[dot]):
@@ -109,29 +106,31 @@ def make_dot(var, params=None, hide_no_ops=True):
 
             # assume for each function call the group is unique
             if meta.is_ret:
-                print("is ret")
-                if meta.group not in all_subgraphs:
-                    print(f"creating new subgraph for {meta.group}")
-                    sub = Digraph(name=f"cluster_{meta.group}")
-                    sub.attr(label=meta.group, style="dotted", color="blue")
-                    all_subgraphs[meta.group] = sub
-                subgraphs.append(all_subgraphs[meta.group])
+                if meta.group not in groups:
+                    graph = Digraph(name=f"cluster_{meta.group}")
+                    graph.attr(label=meta.group, style="dashed", color="blue")
+                    groups[meta.group] = graph
+
+                graph = groups[meta.group]
+
+                # log relations
+                parent = subgraphs[-1]
+                if parent not in children:
+                    children[parent] = []
+                children[parent].append(graph)
+
+                subgraphs.append(graph)
 
             # dot.node(str(id(fn)), get_fn_name(fn), fillcolor=meta.color)
             add_node_to_subgraphs(str(id(fn)), get_fn_name(fn), fillcolor=meta.color, subgraphs=subgraphs)
 
             if meta.is_arg:
-                print("IS ARG")
-                print(subgraphs)
-                # subgraphs.remove(all_subgraphs[meta.group])
-                sub = subgraphs.pop()
-                # if len(subgraphs) >= 1:
-                subgraphs[-1].subgraph(sub)
-                # else:
-                    # dot.subgraph(sub)
+                if len(subgraphs) > 1:
+                    sub = subgraphs.pop()
+                    subgraphs[-1].subgraph(sub)
 
             if hide_no_ops and meta.no_op:
-                # no_ops are created when we add a label_val() to a tensor that
+                # no_ops are created when we add a label_var() to a tensor that
                 # has no grad_fn, so we introduce a no_op grad_fn so the label
                 # appears in the computation graph
 
@@ -174,6 +173,12 @@ def make_dot(var, params=None, hide_no_ops=True):
             add_base_tensor(v)
     else:
         add_base_tensor(var)
+
+    # add all subgraphs at end so dot is up to date
+    # need to do it in reversed so children are updated before parents
+    for parent, subgraphs in reversed(children.items()):
+        for sub in subgraphs:
+            parent.subgraph(sub)
 
     resize_graph(dot)
 
